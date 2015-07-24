@@ -175,19 +175,19 @@ func (e *emission) manifestURL() string {
 	infoURL := "http://webservices.francetelevisions.fr/tools/getInfosOeuvre/v2/?catalogue=Pluzz&idDiffusion=" + e.IDDiffusion
 	resp, err := http.Get(infoURL)
 	if err != nil {
-		fmt.Printf("error crafting manifest url: %v\n", err)
+		log.Printf("error crafting manifest url: %v\n", err)
 		return ""
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		fmt.Printf("%d for ", resp.StatusCode, infoURL)
+		log.Printf("%d for ", resp.StatusCode, infoURL)
 		return ""
 	}
 
 	d := json.NewDecoder(resp.Body)
 	var info Oeuvre
 	if err := d.Decode(&info); err != nil {
-		fmt.Printf("error parsing the oeuvre info for %s - %v\n", infoURL, err)
+		log.Printf("error parsing the oeuvre info for %s - %v\n", infoURL, err)
 		return ""
 	}
 
@@ -196,8 +196,8 @@ func (e *emission) manifestURL() string {
 	}
 
 	for _, video := range info.Videos {
-		if video.Format == "hls_v5_os" { //"m3u8-download" {
-			e.m3u8URL = video.URL //strings.Replace(strings.ToLower(video.URL), "manifest.f4m", "index_2_av.m3u8", 1)
+		if video.Format == "hls_v5_os" {
+			e.m3u8URL = video.URL
 			return e.m3u8URL
 		}
 	}
@@ -289,11 +289,11 @@ func main() {
 
 	if *destPathFlag == "" {
 		flag.PrintDefaults()
-		fmt.Println("Set the destination folder")
+		log.Println("Set the destination folder")
 		os.Exit(1)
 	}
 	if _, err := os.Stat(*destPathFlag); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 
@@ -331,12 +331,12 @@ func main() {
 
 		action, ok := showList[em.Titre]
 		if !ok {
-			fmt.Println(title, "not registered, skipping")
+			log.Println(title, "not registered, skipping")
 			continue
 		}
 
 		if action != "dl" {
-			fmt.Println("not downloading", title)
+			log.Println("not downloading", title)
 			continue
 		}
 
@@ -344,13 +344,13 @@ func main() {
 		path := filepath.Join(*destPathFlag, em.Titre)
 		mp4Output := filepath.Join(path, filename+".mp4")
 		if _, err := os.Stat(mp4Output); err == nil {
-			fmt.Println(mp4Output, "alreay exist, skipping download!")
+			log.Println("skipping download", mp4Output, "alreay exist!")
 			continue
 		}
 
 		resp, err := http.Get(em.manifestURL())
 		if err != nil {
-			fmt.Printf("error crafting manifest url: %v\n", err)
+			log.Printf("error crafting manifest url: %v\n", err)
 			continue
 		}
 		defer resp.Body.Close()
@@ -363,7 +363,7 @@ func main() {
 		}
 		playlist := &M3u8{Content: body}
 
-		fmt.Println(">> downloading", filename, "to", path)
+		log.Println(">> downloading", filename, "to", path)
 
 		s := playlist.HighestQualityStream()
 		if s == nil {
@@ -372,8 +372,11 @@ func main() {
 
 		m3u8.DlChan <- &m3u8.WJob{Type: m3u8.ListDL, URL: s.URL, DestPath: path, Filename: filename}
 	}
-	fmt.Println("waiting for the workers to be done")
 	w.Wait()
+	log.Println("done processing TV shows")
+	if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
+		log.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
+	}
 }
 
 /* M3u8 stuff to move to its own file */
@@ -456,7 +459,7 @@ func (m *M3u8) Streams() []*M3u8Stream {
 
 	if !m.parsed {
 		if err := m.parse(); err != nil {
-			fmt.Println("error parsing m3u8 content - %v", err)
+			log.Println("error parsing m3u8 content - %v", err)
 			return nil
 		}
 	}
