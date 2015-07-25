@@ -363,15 +363,15 @@ func main() {
 		}
 		playlist := &M3u8{Content: body}
 
-		log.Println(">> downloading", filename, "to", path)
-
 		s := playlist.HighestQualityStream()
 		if s == nil {
 			continue
 		}
-
+		log.Println(">> downloading", filename, "to", path)
 		m3u8.DlChan <- &m3u8.WJob{Type: m3u8.ListDL, URL: s.URL, DestPath: path, Filename: filename}
+		log.Printf("%s queued up for download\n", filename)
 	}
+	log.Println("waiting for all downloads to be done")
 	w.Wait()
 	log.Println("done processing TV shows")
 	if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
