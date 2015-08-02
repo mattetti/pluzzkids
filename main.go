@@ -110,7 +110,7 @@ func main() {
 
 		// skip if the file was already downloaded
 		path := filepath.Join(*destPathFlag, em.Titre)
-		mp4Output := filepath.Join(path, filename+".mp4")
+		mp4Output := filepath.Join(path, m3u8.CleanFilename(filename)+".mp4")
 		if _, err := os.Stat(mp4Output); err == nil {
 			log.Println("skipping download", mp4Output, "alreay exist!")
 			continue
@@ -121,16 +121,16 @@ func main() {
 			log.Printf("error crafting manifest url: %v\n", err)
 			continue
 		}
-		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			log.Fatal(err)
 		}
+		resp.Body.Close()
 		if resp.StatusCode > 299 {
 			log.Fatal(fmt.Errorf("downloading m3u8 failed [%d] -\n%s", resp.StatusCode, body))
 		}
-		playlist := &M3u8{Content: body}
 
+		playlist := &M3u8{Content: body}
 		s := playlist.HighestQualityStream()
 		if s == nil {
 			continue
