@@ -61,7 +61,9 @@ func main() {
 		log.Fatal(err)
 	}
 	defer f.Close()
+	config = &Config{}
 	if err = json.NewDecoder(f).Decode(config); err != nil {
+		log.Println("error decoding json")
 		log.Fatal(err)
 	}
 
