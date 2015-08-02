@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -26,63 +27,139 @@ func init() {
 
 var (
 	destPathFlag = flag.String("dest", "", "where the files are going to be stored.")
+	configFlag   = flag.String("config", "config.json", "path to the config file.")
+	config       *Config
 	wsURL        = "http://pluzz.webservices.francetelevisions.fr/pluzz/liste/type/replay/rubrique/jeunesse/nb/200/debut/0"
 	MaxRetries   = 4
-	showList     = map[string]string{
-		"Chloé Magique":                        "dl",
-		"Umizoomi":                             "dl",
-		"Les Doozers":                          "dl",
-		"Singe mi singe moi":                   "dl",
-		"Les lapins crétins":                   "dl",
-		"Les lapins crétins : invasion":        "dl",
-		"Sam le pompier":                       "dl",
-		"Le Dino train":                        "dl",
-		"Zou":                                  "dl",
-		"1, 2, 3, Bo":                          "dl",
-		"Peppa Pig":                            "dl",
-		"Flapacha, où es-tu ?":                 "dl",
-		"LoliRock":                             "dl",
-		"Artzooka !":                           "dl",
-		"Mily Miss Questions":                  "dl",
-		"Mademoiselle Zazie":                   "dl",
-		"Les Monsieur Madame":                  "dl",
-		"Mouk":                                 "dl",
-		"Les triplés":                          "dl",
-		"Zip Zip":                              "dl",
-		"Masha et Michka":                      "dl",
-		"Ava, Riko, Téo":                       "dl",
-		"Les grandes vacances de Grabouillon":  "dl",
-		"Petz Club":                            "dl",
-		"Les Tortues Ninja":                    "dl",
-		"Les carnets nature de Lulu Vroumette": "dl",
-		"Jack et les camions":                  "dl",
-		"C'est bon !":                          "dl",
-		"Tempo Express":                        "dl",
-		"Oui-Oui":                              "dl",
-		"Ninjago":                              "dl",
-		"Dr Pantastique":                       "dl",
-		"Mini-Loup":                            "dl",
-		"Les as de la jungle à la rescousse":   "dl",
-		"Le manège enchanté":                   "dl",
-		"Super 4":                              "dl",
-		"Star Wars Rebels":                     "dl",
-
-		//
-		"Les Dalton":          "skip",
-		"Oggy et les cafards": "skip",
-		"Green Lantern":       "skip",
-		"Mots de la classe":   "skip",
-		"Foudre":              "skip",
-
-		"Slugterra : les mondes souterrains": "skip",
-		"Garfield & Cie":                     "skip",
-		"Twiste Twiste Show":                 "skip",
-		"Code Lyoko":                         "skip",
-		"Popeye":                             "skip",
-		"Les nouvelles aventures de Peter Pan": "skip",
-		"Iron Man":                             "skip",
-	}
 )
+
+func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s \n", os.Args[0])
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	if *destPathFlag == "" {
+		flag.PrintDefaults()
+		log.Println("Set the destination folder")
+		os.Exit(1)
+	}
+	if _, err := os.Stat(*destPathFlag); err != nil {
+		log.Println(err)
+		os.Exit(1)
+	}
+
+	if _, err := os.Stat(*configFlag); err != nil {
+		log.Println("Issue loading config file at path:", *configFlag)
+		log.Println(err)
+		os.Exit(1)
+	}
+
+	f, err := os.Open(*configFlag)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	if err = json.NewDecoder(f).Decode(config); err != nil {
+		log.Fatal(err)
+	}
+
+	cmd := exec.Command("which", "ffmpeg")
+	_, err = cmd.Output()
+	if err != nil {
+		log.Fatal("ffmpeg wasn't found on your system, it is required to convert video files.")
+	}
+
+	var w sync.WaitGroup
+	stopChan := make(chan bool)
+	m3u8.LaunchWorkers(&w, stopChan)
+
+	response, err := http.Get(wsURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	var data wsResp
+	if err := json.NewDecoder(response.Body).Decode(&data); err != nil {
+		log.Fatal(err)
+	}
+
+	for i, em := range data.Response.Emissions {
+		var title string
+		episode := em.Episode
+		season := em.Saison
+		if season == "" {
+			season = "00"
+		} else if len(season) < 2 {
+			season = "0" + season
+		}
+		if episode == "" {
+			episode = em.IDDiffusion
+		}
+		filename := fmt.Sprintf("%s - S%sE%s - %s", em.Titre, season, episode, em.Soustitre)
+		title = fmt.Sprintf("[%d] %s ", i, filename)
+
+		if !config.shouldDownload(em.Titre) {
+			log.Println(title, "not registered, skipping")
+			continue
+		}
+
+		// skip if the file was already downloaded
+		path := filepath.Join(*destPathFlag, em.Titre)
+		mp4Output := filepath.Join(path, filename+".mp4")
+		if _, err := os.Stat(mp4Output); err == nil {
+			log.Println("skipping download", mp4Output, "alreay exist!")
+			continue
+		}
+
+		resp, err := http.Get(em.manifestURL())
+		if err != nil {
+			log.Printf("error crafting manifest url: %v\n", err)
+			continue
+		}
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if resp.StatusCode > 299 {
+			log.Fatal(fmt.Errorf("downloading m3u8 failed [%d] -\n%s", resp.StatusCode, body))
+		}
+		playlist := &M3u8{Content: body}
+
+		s := playlist.HighestQualityStream()
+		if s == nil {
+			continue
+		}
+		log.Println(">> downloading", filename, "to", path)
+		m3u8.DlChan <- &m3u8.WJob{Type: m3u8.ListDL, URL: s.URL, DestPath: path, Filename: filename}
+		log.Printf("%s queued up for download\n", filename)
+	}
+	log.Println("waiting for all downloads to be done")
+	w.Wait()
+	log.Println("done processing TV shows")
+	if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
+		log.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
+	}
+}
+
+type Config struct {
+	Whitelist []string `json:"whitelist"`
+}
+
+func (c *Config) shouldDownload(name string) bool {
+	if c == nil {
+		return false
+	}
+	for i := 0; i < len(c.Whitelist); i++ {
+		if c.Whitelist[i] == name {
+			return true
+		}
+	}
+	return false
+}
 
 type wsResp struct {
 	Query    struct{} `json:"query"`
@@ -278,105 +355,6 @@ type Oeuvre struct {
 	Audiodescription     bool          `json:"audiodescription"`
 	Spritesheet          interface{}   `json:"spritesheet"`
 	IDTaxo               interface{}   `json:"id_taxo"`
-}
-
-func main() {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s \n", os.Args[0])
-		flag.PrintDefaults()
-	}
-	flag.Parse()
-
-	if *destPathFlag == "" {
-		flag.PrintDefaults()
-		log.Println("Set the destination folder")
-		os.Exit(1)
-	}
-	if _, err := os.Stat(*destPathFlag); err != nil {
-		log.Println(err)
-		os.Exit(1)
-	}
-
-	var w sync.WaitGroup
-	stopChan := make(chan bool)
-	m3u8.LaunchWorkers(&w, stopChan)
-
-	response, err := http.Get(wsURL)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer response.Body.Close()
-
-	// parse JSON body
-	var data wsResp
-	if err := json.NewDecoder(response.Body).Decode(&data); err != nil {
-		log.Fatal(err)
-	}
-
-	for i, em := range data.Response.Emissions {
-
-		var title string
-		episode := em.Episode
-		season := em.Saison
-		if season == "" {
-			season = "00"
-		} else if len(season) < 2 {
-			season = "0" + season
-		}
-		if episode == "" {
-			episode = em.IDDiffusion
-		}
-		filename := fmt.Sprintf("%s - S%sE%s - %s", em.Titre, season, episode, em.Soustitre)
-		title = fmt.Sprintf("[%d] %s ", i, filename)
-
-		action, ok := showList[em.Titre]
-		if !ok {
-			log.Println(title, "not registered, skipping")
-			continue
-		}
-
-		if action != "dl" {
-			log.Println("not downloading", title)
-			continue
-		}
-
-		// skip if the file was already downloaded
-		path := filepath.Join(*destPathFlag, em.Titre)
-		mp4Output := filepath.Join(path, filename+".mp4")
-		if _, err := os.Stat(mp4Output); err == nil {
-			log.Println("skipping download", mp4Output, "alreay exist!")
-			continue
-		}
-
-		resp, err := http.Get(em.manifestURL())
-		if err != nil {
-			log.Printf("error crafting manifest url: %v\n", err)
-			continue
-		}
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Fatal(err)
-		}
-		if resp.StatusCode > 299 {
-			log.Fatal(fmt.Errorf("downloading m3u8 failed [%d] -\n%s", resp.StatusCode, body))
-		}
-		playlist := &M3u8{Content: body}
-
-		s := playlist.HighestQualityStream()
-		if s == nil {
-			continue
-		}
-		log.Println(">> downloading", filename, "to", path)
-		m3u8.DlChan <- &m3u8.WJob{Type: m3u8.ListDL, URL: s.URL, DestPath: path, Filename: filename}
-		log.Printf("%s queued up for download\n", filename)
-	}
-	log.Println("waiting for all downloads to be done")
-	w.Wait()
-	log.Println("done processing TV shows")
-	if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
-		log.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
-	}
 }
 
 /* M3u8 stuff to move to its own file */
