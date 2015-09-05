@@ -29,7 +29,7 @@ var (
 	destPathFlag = flag.String("dest", "", "where the files are going to be stored.")
 	configFlag   = flag.String("config", "config.json", "path to the config file.")
 	config       *Config
-	wsURL        = "http://pluzz.webservices.francetelevisions.fr/pluzz/liste/type/replay/rubrique/jeunesse/nb/200/debut/0"
+	wsURL        = "http://pluzz.webservices.francetelevisions.fr/pluzz/liste/type/replay/rubrique/jeunesse/nb/400/debut/0"
 	MaxRetries   = 4
 )
 
@@ -112,7 +112,7 @@ func main() {
 		path := filepath.Join(*destPathFlag, em.Titre)
 		mp4Output := filepath.Join(path, m3u8.CleanFilename(filename)+".mp4")
 		if _, err := os.Stat(mp4Output); err == nil {
-			log.Println("skipping download", mp4Output, "alreay exist!")
+			log.Println("skipping download", mp4Output, "alreay exists!")
 			continue
 		}
 
