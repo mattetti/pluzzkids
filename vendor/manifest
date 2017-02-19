@@ -1,0 +1,22 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "github.com/hailiang/gosocks",
+			"repository": "https://github.com/hailiang/gosocks",
+			"vcs": "git",
+			"revision": "fa8c79229fbda5e9996dd91341b9fc023aa5d33a",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/mattetti/m3u8Grabber/m3u8",
+			"repository": "https://github.com/mattetti/m3u8Grabber",
+			"vcs": "git",
+			"revision": "1ad4ac003a1e89d77ba9bb7e51c83ef88519727c",
+			"branch": "master",
+			"path": "/m3u8",
+			"notests": true
+		}
+	]
+}
