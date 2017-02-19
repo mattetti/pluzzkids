@@ -13,7 +13,7 @@
 			"importpath": "github.com/mattetti/m3u8Grabber/m3u8",
 			"repository": "https://github.com/mattetti/m3u8Grabber",
 			"vcs": "git",
-			"revision": "1ad4ac003a1e89d77ba9bb7e51c83ef88519727c",
+			"revision": "1cebb65bb603a85d6cbb5c625c193a701b0b8639",
 			"branch": "master",
 			"path": "/m3u8",
 			"notests": true

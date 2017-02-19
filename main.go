@@ -21,7 +21,6 @@ import (
 )
 
 func init() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	m3u8.Debug = true
 }
 
@@ -67,7 +66,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cmd := exec.Command("which", "ffmpeg")
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("where", "ffmpeg")
+	} else {
+		cmd = exec.Command("which", "ffmpeg")
+	}
 	_, err = cmd.Output()
 	if err != nil {
 		log.Fatal("ffmpeg wasn't found on your system, it is required to convert video files.")
@@ -259,7 +263,7 @@ func (e *emission) manifestURL() string {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		log.Printf("%d for ", resp.StatusCode, infoURL)
+		log.Printf("%d for %s\n", resp.StatusCode, infoURL)
 		return ""
 	}
 
