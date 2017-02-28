@@ -27,9 +27,11 @@ func init() {
 var (
 	destPathFlag = flag.String("dest", "", "where the files are going to be stored.")
 	configFlag   = flag.String("config", "config.json", "path to the config file.")
+	logFlag      = flag.String("log", "", "path to the log file to log to")
 	config       *Config
 	wsURL        = "http://pluzz.webservices.francetelevisions.fr/pluzz/liste/type/replay/rubrique/jeunesse/nb/400/debut/0"
 	MaxRetries   = 4
+	logger       = log.New(os.Stdout, "pk: ", log.Ldate|log.Ltime|log.Lshortfile)
 )
 
 func main() {
@@ -44,26 +46,40 @@ func main() {
 		log.Println("Set the destination folder")
 		os.Exit(1)
 	}
+
+	// log to file if needed
+	if *logFlag != "" {
+		os.MkdirAll(filepath.Dir(*logFlag), os.ModePerm)
+		f, err := os.Create(*logFlag)
+		if err != nil {
+			fmt.Println("failed to create the log file")
+			panic(err)
+		}
+		defer f.Close()
+		logger = log.New(f, "pk: ", log.Ldate|log.Ltime|log.Lshortfile)
+	}
+	m3u8.Logger = logger
+
 	if _, err := os.Stat(*destPathFlag); err != nil {
-		log.Println(err)
+		logger.Println(err)
 		os.Exit(1)
 	}
 
 	if _, err := os.Stat(*configFlag); err != nil {
-		log.Println("Issue loading config file at path:", *configFlag)
-		log.Println(err)
+		logger.Println("Issue loading config file at path:", *configFlag)
+		logger.Println(err)
 		os.Exit(1)
 	}
 
 	f, err := os.Open(*configFlag)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer f.Close()
 	config = &Config{}
 	if err = json.NewDecoder(f).Decode(config); err != nil {
-		log.Println("error decoding json")
-		log.Fatal(err)
+		logger.Println("error decoding json")
+		logger.Fatal(err)
 	}
 
 	var cmd *exec.Cmd
@@ -83,13 +99,13 @@ func main() {
 
 	response, err := http.Get(wsURL)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	defer response.Body.Close()
 
 	var data wsResp
 	if err := json.NewDecoder(response.Body).Decode(&data); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 
 	for i, em := range data.Response.Emissions {
@@ -108,7 +124,7 @@ func main() {
 		title = fmt.Sprintf("[%d] %s ", i, filename)
 
 		if !config.shouldDownload(em.Titre) {
-			log.Println(title, "not registered, skipping")
+			logger.Println(title, "not registered, skipping")
 			continue
 		}
 
@@ -116,22 +132,22 @@ func main() {
 		path := filepath.Join(*destPathFlag, em.Titre)
 		mp4Output := filepath.Join(path, m3u8.CleanFilename(filename)+".mp4")
 		if _, err := os.Stat(mp4Output); err == nil {
-			log.Println("skipping download", mp4Output, "alreay exists!")
+			logger.Println("skipping download", mp4Output, "alreay exists!")
 			continue
 		}
 
 		resp, err := http.Get(em.manifestURL())
 		if err != nil {
-			log.Printf("error crafting manifest url: %v\n", err)
+			logger.Printf("error crafting manifest url: %v\n", err)
 			continue
 		}
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode > 299 {
-			log.Fatal(fmt.Errorf("downloading m3u8 failed [%d] -\n%s", resp.StatusCode, body))
+			logger.Fatal(fmt.Errorf("downloading m3u8 failed [%d] -\n%s", resp.StatusCode, body))
 		}
 
 		playlist := &M3u8{Content: body}
@@ -139,15 +155,15 @@ func main() {
 		if s == nil {
 			continue
 		}
-		log.Println(">> downloading", filename, "to", path)
+		logger.Println(">> downloading", filename, "to", path)
 		m3u8.DlChan <- &m3u8.WJob{Type: m3u8.ListDL, URL: s.URL, DestPath: path, Filename: filename}
-		log.Printf("%s queued up for download\n", filename)
+		logger.Printf("%s queued up for download\n", filename)
 	}
-	log.Println("waiting for all downloads to be done")
+	logger.Println("waiting for all downloads to be done")
 	w.Wait()
-	log.Println("done processing TV shows")
+	logger.Println("done processing TV shows")
 	if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
-		log.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
+		logger.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
 	}
 }
 
@@ -258,19 +274,19 @@ func (e *emission) manifestURL() string {
 	infoURL := "http://webservices.francetelevisions.fr/tools/getInfosOeuvre/v2/?catalogue=Pluzz&idDiffusion=" + e.IDDiffusion
 	resp, err := http.Get(infoURL)
 	if err != nil {
-		log.Printf("error crafting manifest url: %v\n", err)
+		logger.Printf("error crafting manifest url: %v\n", err)
 		return ""
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		log.Printf("%d for %s\n", resp.StatusCode, infoURL)
+		logger.Printf("%d for %s\n", resp.StatusCode, infoURL)
 		return ""
 	}
 
 	d := json.NewDecoder(resp.Body)
 	var info Oeuvre
 	if err := d.Decode(&info); err != nil {
-		log.Printf("error parsing the oeuvre info for %s - %v\n", infoURL, err)
+		logger.Printf("error parsing the oeuvre info for %s - %v\n", infoURL, err)
 		return ""
 	}
 
@@ -424,7 +440,7 @@ func (m *M3u8) parse() error {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 	// TODO: verify first line for #EXTM3U
 	// TODO: process each line
@@ -443,7 +459,7 @@ func (m *M3u8) Streams() []*M3u8Stream {
 
 	if !m.parsed {
 		if err := m.parse(); err != nil {
-			log.Println("error parsing m3u8 content - %v", err)
+			logger.Println("error parsing m3u8 content - %v", err)
 			return nil
 		}
 	}
