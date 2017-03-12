@@ -15,7 +15,7 @@ var (
 	TotalWorkers = 4
 	DlChan       = make(chan *WJob)
 	segChan      = make(chan *WJob)
-	TmpFolder, _ = ioutil.TempDir("", "m3u8worker")
+	TmpFolder, _ = ioutil.TempDir("", "m3u8")
 )
 
 type WJobType int
@@ -88,7 +88,7 @@ func (w *Worker) downloadM3u8List(j *WJob) {
 	m3f.getSegments("", "")
 	j.wg = &sync.WaitGroup{}
 	j.Filename = CleanFilename(j.Filename)
-	j.DestPath = cleanPath(j.DestPath)
+	j.DestPath = CleanPath(j.DestPath)
 	for i, segURL := range m3f.Segments {
 		j.wg.Add(1)
 		segChan <- &WJob{
@@ -118,13 +118,14 @@ func (w *Worker) downloadM3u8List(j *WJob) {
 		}
 	}
 	mp4Path := filepath.Join(j.DestPath, j.Filename) + ".mp4"
-	out, err := os.Create(tmpTsFile) //OpenFile(outputFilePath, os.O_APPEND|os.O_WRONLY, os.ModePerm)
+	out, err := os.Create(tmpTsFile)
 	if err != nil {
 		Logger.Printf("Failed to create output ts file - %s - %s\n", tmpTsFile, err)
 		return
 	}
 	Logger.Printf("Preparing to convert to %s\n", mp4Path)
 
+	var failed bool
 	for i := 0; i < len(m3f.Segments); i++ {
 		file := segmentTmpPath(j.DestPath, j.Filename, i)
 		if _, err := os.Stat(file); err != nil {
@@ -132,28 +133,31 @@ func (w *Worker) downloadM3u8List(j *WJob) {
 			continue
 		}
 
-		in, err := os.OpenFile(file, os.O_RDONLY, 0666)
+		in, err := os.Open(file)
 		if err != nil {
 			Logger.Printf("Can't open %s because %s\n", file, err)
-			out.Close()
-			return
+			failed = true
+			break
 		}
 		_, err = io.Copy(out, in)
 		in.Close()
 		if err != nil {
 			Logger.Println(err)
-			out.Close()
-			return
+			failed = true
+			break
 		}
 		out.Sync()
 		err = os.Remove(file)
 		if err != nil {
-			Logger.Println(err)
-			out.Close()
-			return
+			Logger.Println("failed to remove", file, err)
 		}
 	}
 	out.Close()
+	if failed {
+		out.Close()
+		return
+	}
+
 	if err := TsToMp4(tmpTsFile, mp4Path); err != nil {
 		Logger.Println("ts to mp4 error", err)
 		return
@@ -175,6 +179,7 @@ func (w *Worker) downloadM3u8Segment(j *WJob) {
 		Logger.Println("Failed to download ", j.URL)
 		return
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		Logger.Println(resp)
@@ -197,7 +202,7 @@ func (w *Worker) downloadM3u8Segment(j *WJob) {
 		return
 	}
 	defer out.Close()
-	defer resp.Body.Close()
+
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		Logger.Println("error copying resp body to file", err)
@@ -211,5 +216,5 @@ func segmentTmpPath(path, filename string, pos int) string {
 }
 
 func CleanFilename(name string) string {
-	return strings.Replace(name, "/", "-", -1)
+	return CleanPath(strings.Replace(name, "/", "-", -1))
 }
