@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 
+	"time"
+
 	"github.com/mattetti/m3u8Grabber/m3u8"
 )
 
@@ -97,6 +99,20 @@ func main() {
 	stopChan := make(chan bool)
 	m3u8.LaunchWorkers(&w, stopChan)
 
+	for {
+		select {
+		case <-stopChan:
+			os.Exit(1)
+		default:
+			run(&w)
+			logger.Println("next run in an hour")
+			time.Sleep(1 * time.Hour)
+		}
+	}
+}
+
+func run(w *sync.WaitGroup) {
+	logger.Println("start of a run")
 	response, err := http.Get(wsURL)
 	if err != nil {
 		logger.Fatal(err)
@@ -129,12 +145,13 @@ func main() {
 		}
 
 		// skip if the file was already downloaded
-		path := filepath.Join(*destPathFlag, em.Titre)
+		path := m3u8.CleanPath(filepath.Join(*destPathFlag, em.Titre))
 		mp4Output := filepath.Join(path, m3u8.CleanFilename(filename)+".mp4")
 		if _, err := os.Stat(mp4Output); err == nil {
 			logger.Println("skipping download", mp4Output, "alreay exists!")
 			continue
 		}
+		logger.Println("preparing to download", mp4Output)
 
 		resp, err := http.Get(em.manifestURL())
 		if err != nil {
@@ -147,7 +164,7 @@ func main() {
 		}
 		resp.Body.Close()
 		if resp.StatusCode > 299 {
-			logger.Fatal(fmt.Errorf("downloading m3u8 failed [%d] -\n%s", resp.StatusCode, body))
+			logger.Printf("downloading m3u8 failed [%d] -\n%s\n", resp.StatusCode, body)
 		}
 
 		playlist := &M3u8{Content: body}
@@ -171,12 +188,13 @@ type Config struct {
 	Whitelist []string `json:"whitelist"`
 }
 
+// shouldDownload checks that the program is whitelisted for download.
 func (c *Config) shouldDownload(name string) bool {
 	if c == nil {
 		return false
 	}
 	for i := 0; i < len(c.Whitelist); i++ {
-		if c.Whitelist[i] == name {
+		if strings.ToLower(c.Whitelist[i]) == strings.ToLower(strings.TrimSpace(name)) {
 			return true
 		}
 	}

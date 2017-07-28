@@ -187,8 +187,9 @@ func (w *Worker) downloadM3u8Segment(j *WJob) {
 	}
 
 	destination := segmentTmpPath(j.DestPath, j.Filename, j.Pos)
+	// cleanup if the file is already there
 	if fileAlreadyExists(destination) {
-		return
+		os.Remove(destination)
 	}
 
 	if err := os.MkdirAll(j.DestPath, os.ModePerm); err != nil {
