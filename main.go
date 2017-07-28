@@ -148,7 +148,7 @@ func run(w *sync.WaitGroup) {
 		path := m3u8.CleanPath(filepath.Join(*destPathFlag, em.Titre))
 		mp4Output := filepath.Join(path, m3u8.CleanFilename(filename)+".mp4")
 		if _, err := os.Stat(mp4Output); err == nil {
-			logger.Println("skipping download", mp4Output, "alreay exists!")
+			logger.Println("skipping download", mp4Output, "already exists!")
 			continue
 		}
 		logger.Println("preparing to download", mp4Output)

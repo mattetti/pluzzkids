@@ -187,9 +187,8 @@ func (w *Worker) downloadM3u8Segment(j *WJob) {
 	}
 
 	destination := segmentTmpPath(j.DestPath, j.Filename, j.Pos)
-	// cleanup if the file is already there
 	if fileAlreadyExists(destination) {
-		os.Remove(destination)
+		return
 	}
 
 	if err := os.MkdirAll(j.DestPath, os.ModePerm); err != nil {
@@ -213,7 +212,7 @@ func (w *Worker) downloadM3u8Segment(j *WJob) {
 }
 
 func segmentTmpPath(path, filename string, pos int) string {
-	return fmt.Sprintf("%s/%s._%d", TmpFolder, strings.Replace(filename, "/", "-", -1), pos)
+	return filepath.Join(TmpFolder, fmt.Sprintf("%s._%d", strings.Replace(filename, "/", "-", -1), pos))
 }
 
 func CleanFilename(name string) string {
