@@ -49,6 +49,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	defer func() {
+		logger.Println("done processing TV shows")
+		if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
+			logger.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
+		}
+	}()
+
 	// log to file if needed
 	if *logFlag != "" {
 		os.MkdirAll(filepath.Dir(*logFlag), os.ModePerm)
@@ -178,10 +185,6 @@ func run(w *sync.WaitGroup) {
 	}
 	logger.Println("waiting for all downloads to be done")
 	w.Wait()
-	logger.Println("done processing TV shows")
-	if err := os.RemoveAll(m3u8.TmpFolder); err != nil {
-		logger.Fatalf("failed to clean up tmp folder %s\n", m3u8.TmpFolder)
-	}
 }
 
 type Config struct {
