@@ -143,7 +143,7 @@ func run(w *sync.WaitGroup) {
 		if episode == "" {
 			episode = em.IDDiffusion
 		}
-		filename := fmt.Sprintf("%s - S%sE%s - %s", em.Titre, season, episode, em.Soustitre)
+		filename := m3u8.CleanFilename(fmt.Sprintf("%s - S%sE%s - %s", em.Titre, season, episode, em.Soustitre))
 		title = fmt.Sprintf("[%d] %s ", i, filename)
 
 		if !config.shouldDownload(em.Titre) {
@@ -153,8 +153,8 @@ func run(w *sync.WaitGroup) {
 
 		// skip if the file was already downloaded
 		path := m3u8.CleanPath(filepath.Join(*destPathFlag, em.Titre))
-		mp4Output := filepath.Join(path, m3u8.CleanFilename(filename)+".mp4")
-		if _, err := os.Stat(mp4Output); err == nil {
+		mp4Output := filepath.Join(path, filename+".mp4")
+		if isDuplicate(mp4Output, path, em.Soustitre) {
 			logger.Println("skipping download", mp4Output, "already exists!")
 			continue
 		}
@@ -177,6 +177,7 @@ func run(w *sync.WaitGroup) {
 		playlist := &M3u8{Content: body}
 		s := playlist.HighestQualityStream()
 		if s == nil {
+			logger.Printf("couldn't find the highest quality stream - %#v\n", s)
 			continue
 		}
 		logger.Println(">> downloading", filename, "to", path)
@@ -480,7 +481,7 @@ func (m *M3u8) Streams() []*M3u8Stream {
 
 	if !m.parsed {
 		if err := m.parse(); err != nil {
-			logger.Println("error parsing m3u8 content - %v", err)
+			logger.Printf("error parsing m3u8 content - %v\n", err)
 			return nil
 		}
 	}
@@ -524,4 +525,26 @@ type M3u8Seg struct {
 	Order    int
 	Duration string // TODO convert in time.Duration
 	URL      string
+}
+
+// check if we already have a version of the file.
+func isDuplicate(fullPath, path, soustitre string) bool {
+	if _, err := os.Stat(fullPath); err == nil {
+		return true
+	}
+
+	if soustitre != "" {
+		files, err := ioutil.ReadDir(path)
+		if err != nil {
+			return false
+		}
+		for _, f := range files {
+			if strings.HasSuffix(f.Name(), fmt.Sprintf("%s.mp4", soustitre)) {
+				logger.Printf("Found a local alternative version - %s\n", f.Name())
+				return true
+			}
+		}
+	}
+
+	return false
 }
