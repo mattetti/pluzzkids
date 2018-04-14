@@ -131,8 +131,8 @@ func run(w *sync.WaitGroup) {
 		logger.Fatal(err)
 	}
 
-	for i, em := range data.Response.Emissions {
-		var title string
+	for _, em := range data.Response.Emissions {
+		// var title string
 		episode := em.Episode
 		season := em.Saison
 		if season == "" {
@@ -144,17 +144,17 @@ func run(w *sync.WaitGroup) {
 			episode = em.IDDiffusion
 		}
 		filename := m3u8.CleanFilename(fmt.Sprintf("%s - S%sE%s - %s", em.Titre, season, episode, em.Soustitre))
-		title = fmt.Sprintf("[%d] %s ", i, filename)
+		// title = fmt.Sprintf("[%d] %s ", i, filename)
 
 		if !config.shouldDownload(em.Titre) {
-			logger.Println(title, "not registered, skipping")
+			logger.Println(em.Titre, "not registered, skipping")
 			continue
 		}
 
 		// skip if the file was already downloaded
 		path := m3u8.CleanPath(filepath.Join(*destPathFlag, em.Titre))
 		mp4Output := filepath.Join(path, filename+".mp4")
-		if isDuplicate(mp4Output, path, em.Soustitre) {
+		if isDuplicate(mp4Output, path, m3u8.CleanFilename(em.Soustitre)) {
 			logger.Println("skipping download", mp4Output, "already exists!")
 			continue
 		}
@@ -528,14 +528,15 @@ type M3u8Seg struct {
 }
 
 // check if we already have a version of the file.
-func isDuplicate(fullPath, path, soustitre string) bool {
+func isDuplicate(fullPath, dirPath, soustitre string) bool {
 	if _, err := os.Stat(fullPath); err == nil {
 		return true
 	}
 
 	if soustitre != "" {
-		files, err := ioutil.ReadDir(path)
+		files, err := ioutil.ReadDir(dirPath)
 		if err != nil {
+			logger.Printf("Error while scanning %s - %v\n", dirPath, err)
 			return false
 		}
 		for _, f := range files {
