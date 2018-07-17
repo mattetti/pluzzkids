@@ -105,8 +105,9 @@ func (w *Worker) downloadM3u8List(j *WJob) {
 	j.wg.Wait()
 	// put the segments together
 	Logger.Printf("All segments (%d) downloaded!\n", len(m3f.Segments))
-	// assemble
-	tmpTsFile := j.DestPath + "/" + j.Filename + ".ts"
+	// assemble in the tmp folder since it should be faster than destination
+	tmpTsFile := filepath.Join(TmpFolder, j.Filename+".ts")
+	// make sure destination is available
 	if _, err := os.Stat(j.DestPath); err != nil {
 		if os.IsNotExist(err) {
 			// file does not exist
@@ -147,12 +148,12 @@ func (w *Worker) downloadM3u8List(j *WJob) {
 			failed = true
 			break
 		}
-		out.Sync()
 		err = os.Remove(file)
 		if err != nil {
 			Logger.Println("failed to remove", file, err)
 		}
 	}
+	out.Sync()
 	out.Close()
 	if failed {
 		out.Close()
