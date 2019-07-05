@@ -1,0 +1,4 @@
+github.com/hailiang/gosocks v0.0.0-20160617000441-fa8c79229fbd h1:CiuT1zrFUrUlVCOKw4YuhdjFvW/hDv5ClMSAW4oVhDA=
+github.com/hailiang/gosocks v0.0.0-20160617000441-fa8c79229fbd/go.mod h1:Afnr5iK49yFUjETE+6wdlF+J0txZI1BLvpVtxsNqVgQ=
+github.com/mattetti/m3u8Grabber v0.0.0-20171008020109-9a6d4939c8ec h1:3yLfligKe2QYX0S8cuoh9aY2V2rqepCQ5GFW6KJus9g=
+github.com/mattetti/m3u8Grabber v0.0.0-20171008020109-9a6d4939c8ec/go.mod h1:69Rzxjzfk/G3kmWucFveIpNe8D2CCAyXY+12Q209t2I=

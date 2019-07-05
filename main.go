@@ -31,7 +31,7 @@ var (
 	configFlag   = flag.String("config", "config.json", "path to the config file.")
 	logFlag      = flag.String("log", "", "path to the log file to log to")
 	config       *Config
-	wsURL        = "http://pluzz.webservices.francetelevisions.fr/pluzz/liste/type/replay/rubrique/jeunesse/nb/400/debut/0"
+	wsURL        = "http://pluzz.webservices.francetelevisions.fr/pluzz/liste/type/replay/rubrique/jeunesse/nb/10000"
 	MaxRetries   = 4
 	logger       = log.New(os.Stdout, "pk: ", log.Ldate|log.Ltime|log.Lshortfile)
 )
